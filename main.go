@@ -22,17 +22,24 @@ var (
     helpFlag *bool
 )
 
-func dummyPage(w http.ResponseWriter, r *http.Request){
-    fmt.Fprintf(w, "Welcome to the Dummy Page!")
-    fmt.Println("Endpoint Hit: dummy Page")
+func dummyEndpoint(w http.ResponseWriter, r *http.Request){
+    
+    simplelogging.LogMessage ("Hit 'dummyEndpoint'", simplelogging.LOG_INFO)
 }
 
 func handleRequests() {
-    http.HandleFunc("/", dummyPage)
-    log.Fatal(http.ListenAndServe(":"+string(httpPort), nil))
+
+   http.HandleFunc("/dummy", dummyEndpoint)
+
+   portStr := fmt.Sprintf (":%d", httpPort)
+
+   msg := fmt.Sprintf ("Starting user accounts server on port %d\n", httpPort)
+   simplelogging.LogMessage (msg,simplelogging.LOG_INFO)
+
+   log.Fatal(http.ListenAndServe(portStr, nil))
 }
 
-func handleCommandLineParameters () error {
+func handleCommandLineParameters () (int, error) {
 
     var str string
     flag.StringVar (&str, "port", DEFAULT_PORT, "Port on which the user account server will run.")
@@ -41,22 +48,24 @@ func handleCommandLineParameters () error {
     flag.Parse ()
 
     // get the port number
-    httpPort, err := strconv.Atoi(str)
-    fmt.Printf ("Starting server on port %d\n", httpPort)
-
-    return err
+    port, err := strconv.Atoi(str)
+       
+    return port, err
 }
 
 func showSyntax () {
     simplelogging.LogMessage ("Showing command syntax", simplelogging.LOG_INFO)
     
-    fmt.Printf ("UASERVER [-HELP] | [-PORT=<port number>] [LOGFILE=<filepath>]")
+    fmt.Printf ("UASERVER [-HELP] | [-PORT = <port number>] [LOGFILE = <filepath>]\n\n")
+    fmt.Println ("<port number> - HTTP port number for server listener. Defaults to 8080.")
+    fmt.Println ("<filepath>    - Full or partial path of logfile. Defaults to LOGFILE.TXT in current folder.\n")
         
 }
 
 func main() {
 
-    err := handleCommandLineParameters ()
+    var err error
+    httpPort, err = handleCommandLineParameters ()
 
     simplelogging.Init (logfile, false)
 
@@ -64,13 +73,10 @@ func main() {
        showSyntax ()
        os.Exit(0) 
     }
-
-   
   
     if err == nil {
-        msg := fmt.Sprintf ("Starting user accounts server on port %d,\n", httpPort)
-        simplelogging.LogMessage (msg,simplelogging.LOG_INFO)
-        handleRequests()
+       fmt.Printf ("Starting UAServer on Port %d ...\n", httpPort)
+       handleRequests()
     }
 }
 
