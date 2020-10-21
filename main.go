@@ -3,11 +3,12 @@ package main
 import (
     "fmt"
     "log"
-    "net/http"
     "strconv"
     "flag"
     "os"
+    "net/http"
 
+    "github.com/gorilla/mux"
     simplelogging "github.com/colinwilcox1967/golangsimplelogging"
 )
 
@@ -29,7 +30,8 @@ func dummyEndpoint(w http.ResponseWriter, r *http.Request){
 
 func handleRequests() {
 
-   http.HandleFunc("/dummy", dummyEndpoint)
+   gmuxRouter := mux.NewRouter().StrictSlash(true)
+   gmuxRouter.HandleFunc("/dummy", dummyEndpoint)
 
    portStr := fmt.Sprintf (":%d", httpPort)
 
