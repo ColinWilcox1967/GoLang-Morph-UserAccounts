@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"golang.org/x/crypto/bcrypt"
 
 	simplelogging "github.com/colinwilcox1967/golangsimplelogging"
 	"github.com/gorilla/mux"
@@ -98,12 +99,42 @@ func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	password := vars["password"]
 
 	var result Result
-	result.Token = "random token"
-	result.Message = "Login Successful"
-	result.Value = true
+		
+	if username != "" && password != "" {
+		err, hashedPassword := generateHashFromPassword ([]byte(password))
+
+		if err == nil {
+
+			actualPassword := "" // TODO: load for accounts file
+
+			if comparePasswordAgainstHash (actualPassword, []byte(hashedPassword)) {
+				result = createLoginAttemptResult (true, "Login Successfull")
+
+				// TODO: embedd a session token here
+
+			} else {
+				result = createLoginAttemptResult (false, "Login Failure - Credential Mismatch")
+			}
+		
+		} else {
+			result = createLoginAttemptResult (false, "Login Failure - Password Problem")
+		}
+	} else {
+		result = createLoginAttemptResult (false, "Login Failure - No Credentials Supplied")
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func createLoginAttemptResult (state bool, msg string) Result {
+	var loginResult Result
+
+	loginResult.Message = msg
+	loginResult.Value = state
+	loginResult.Token = ""
+	
+	return loginResult
 }
 
 func logoutUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +204,26 @@ func showSyntax() {
 	fmt.Println("<filepath>    - Full or partial path of logfile. Defaults to LOGFILE.TXT in current folder.\n")
 
 }
+
+// password encryption suppport
+func generateHashFromPassword (password []byte) (error, string) {
+    hash, err := bcrypt.GenerateFromPassword(password, bcrypt.MinCost)
+    if err != nil {
+        return err, ""
+    }
+
+    return nil, string(hash)  
+}
+
+func comparePasswordAgainstHash (hashedPassword string, plaintextPassword []byte) bool {
+    byteHash := []byte(hashedPassword)
+    err := bcrypt.CompareHashAndPassword(byteHash, plaintextPassword)
+    if err != nil {
+       return false
+    }
+    
+    return true
+} 
 
 func main() {
 
