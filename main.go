@@ -63,7 +63,7 @@ type ActionResult struct {
 
 var (
 	httpPort     int
-	logfile      string
+	logFile      string
 	accountsFile string
 	helpFlag     *bool
 
@@ -299,7 +299,7 @@ func handleCommandLineParameters() (int, error) {
 
 	var str string
 	flag.StringVar(&str, "port", DEFAULT_PORT, "Port on which the user account server will run.")
-	flag.StringVar(&logfile, "logfile", DEFAULT_LOG_FILE, "User accounts log file.")
+	flag.StringVar(&logFile, "log", DEFAULT_LOG_FILE, "User accounts log file.")
 	flag.StringVar(&accountsFile, "file", DEFAULT_ACCOUNTS_FILE, "Specifies the name of the user accounts file.")
 	helpFlag = flag.Bool("help", false, "Help required by user.")
 	flag.Parse()
@@ -313,7 +313,7 @@ func handleCommandLineParameters() (int, error) {
 func showSyntax() {
 	simplelogging.LogMessage("Showing command syntax", simplelogging.LOG_INFO)
 
-	fmt.Printf("UASERVER [-HELP] | [-PORT = <port number>] [-FILE = <accounts file path>] [-LOGFILE = <log file path>]\n\n")
+	fmt.Printf("UASERVER [-HELP] | [-PORT = <port number>] [-FILE = <accounts file path>] [-LOG = <log file path>]\n\n")
 	fmt.Println("<port number>        - HTTP port number for server listener. Defaults to 8080.")
 	fmt.Println("<accounts file path> - Full or partial path of accounts file. Defaults to USERS.DAT in current folder.\n")
 	fmt.Println("<log file path>      - Full or partial path of log file. Defaults to LOGFILE.TXT in current folder.\n")
@@ -373,7 +373,7 @@ func main() {
 	var err error
 	httpPort, err = handleCommandLineParameters()
 
-	simplelogging.Init(logfile, false)
+	simplelogging.Init(logFile, false)
 
 	if *helpFlag {
 		showSyntax()
