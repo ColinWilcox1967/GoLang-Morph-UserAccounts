@@ -159,6 +159,8 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	simplelogging.LogMessage("Hit 'deleteUserAccountEndpoint'", simplelogging.LOG_INFO)
 
+	var foundRecord bool
+	
 	vars := mux.Vars(r)
 	username := vars["username"]
 
@@ -168,28 +170,40 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 		if string(account.Username) == username {
 			userAccounts = append(userAccounts[:index], userAccounts[index+1:]...)
-
-			msg := fmt.Sprintf("Removed user account %s (username:'%s'\n", index, account.Username)
+			foundRecord = true
+	
+			msg := fmt.Sprintf("Removed user account %s (username:'%s')\n", index, account.Username)
 			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 		}
 	}
-	recordsWritten := writeUserAccountsFile(accountsFile)
 
 	var result ActionResult
 
-	result.Type = ACTION_DELETE_USER_ACCOUNT
-	result.Token = ""
-	if recordsWritten == recordsRead-1 {
-		result.Value = true
-		result.Message = "User account deleted"
-	} else {
+	if !foundRecord {
+		msg := fmt.Sprintf("Unable to find user account tieh name ('%s')\n", username)
+		simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
+
 		result.Value = false
-		result.Message = "Failed to delete user account"
+		result.Message = "Record not found"
+
+	} else {
+
+		recordsWritten := writeUserAccountsFile(accountsFile)
+
+		result.Type = ACTION_DELETE_USER_ACCOUNT
+		result.Token = ""
+		if recordsWritten == recordsRead-1 {
+			result.Value = true
+			result.Message = "User account deleted"
+		} else {
+			result.Value = false
+			result.Message = "Failed to delete user account"
+		}
+
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
-
 }
 
 func findUserAccountByUsername(username string) (bool, int) {
