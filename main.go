@@ -77,13 +77,23 @@ func addUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	simplelogging.LogMessage("Hit 'addUserAccountEndpoint'", simplelogging.LOG_INFO)
 
-	reqBody, _ := ioutil.ReadAll(r.Body)
+
+//	reqBody, _ := ioutil.ReadAll(r.Body)
 	var newAccount UserAccountRecord
 
-	json.Unmarshal(reqBody, &newAccount)
+	vars := mux.Vars(r)
+	username := vars["username"]
+	password := vars["password"]
+
+
+	//json.Unmarshal(reqBody, &newAccount)
+
+	fmt.Printf ("Username : %s, Password : %s\n", username, password)
+
 
 	// hash the password before writing
-	_, newAccount.Password = generateHashFromPassword([]byte(newAccount.Password)) // ?? is this needed?
+	_, newAccount.Password = generateHashFromPassword([]byte(password)) // ?? is this needed?
+    newAccount.Username = username
 
 	recordsRead := readUserAccountsFile(accountsFile)
 
@@ -113,10 +123,19 @@ func addUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 func editUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'editUserAccountEndpoint'", simplelogging.LOG_INFO)
-	//	vars := mux.Vars(r)
-	//	id := vars["id"]
 
+//	vars := mux.Vars(r)
+//	username := vars["username"]
+
+//	var accountId int
 	recordsRead := readUserAccountsFile(accountsFile)
+
+//	for index, account := range userAccounts {
+//		if account.Username == username {
+//			accountId = index
+//			break
+//		}
+//	}
 
 	// TO DO Update
 
@@ -141,16 +160,16 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'deleteUserAccountEndpoint'", simplelogging.LOG_INFO)
 
 	vars := mux.Vars(r)
-	id := vars["id"]
+	username := vars["username"]
 
 	recordsRead := readUserAccountsFile(accountsFile)
 
 	for index, account := range userAccounts {
 
-		if string(account.Id) == id {
+		if string(account.Username) == username {
 			userAccounts = append(userAccounts[:index], userAccounts[index+1:]...)
 
-			msg := fmt.Sprintf("Removed user account %s (username:'%s'\n", id, account.Username)
+			msg := fmt.Sprintf("Removed user account %s (username:'%s'\n", index, account.Username)
 			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 		}
 	}
@@ -189,7 +208,6 @@ func findUserAccountByUsername(username string) (bool, int) {
 func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'LoginUserAccountEndpoint'", simplelogging.LOG_INFO)
 
-	fmt.Println("login")
 	vars := mux.Vars(r)
 	username := vars["username"]
 	password := vars["password"]
@@ -197,29 +215,21 @@ func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	var result ActionResult
 
 	if username != "" && password != "" {
-		err, hashedPassword := generateHashFromPassword([]byte(password))
+		// load into memory and search for matching username
+		_ = readUserAccountsFile(accountsFile)
+		foundUser, index := findUserAccountByUsername(username)
+		if foundUser {
+			actualPasswordFromFile := userAccounts[index].Password
+			if comparePasswordAgainstHash(actualPasswordFromFile, password) {
+				result = createLoginAttemptResult(true, "Login Successfull")
 
-		if err == nil {
-
-			// load into memory and search for matching username
-			_ = readUserAccountsFile(accountsFile)
-			foundUser, index := findUserAccountByUsername(username)
-			if foundUser {
-				actualPassword := userAccounts[index].Password
-
-				if comparePasswordAgainstHash(actualPassword, []byte(hashedPassword)) {
-					result = createLoginAttemptResult(true, "Login Successfull")
-
-					//			token := GetSessionToken(r)
-					//			setSession(token, r)
-				} else {
-					result = createLoginAttemptResult(false, "Login Failure - Incorrect Credentials")
-				}
+				//			token := GetSessionToken(r)
+				//			setSession(token, r)
 			} else {
-				result = createLoginAttemptResult(false, "Login Failure - User Not Found")
+				result = createLoginAttemptResult(false, "Login Failure - Incorrect Credentials")
 			}
 		} else {
-			result = createLoginAttemptResult(false, "Login Failure - Credential Mismatch")
+			result = createLoginAttemptResult(false, "Login Failure - User Not Found")
 		}
 
 	} else {
@@ -244,6 +254,8 @@ func createLoginAttemptResult(state bool, msg string) ActionResult {
 func logoutUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'LogoutUserAccountEndpoint'", simplelogging.LOG_INFO)
 
+
+fmt.Println ("LOGout")
 	//	clearSession(r)
 }
 
@@ -253,9 +265,9 @@ func handleRequests() {
 
 	gmuxRouter.HandleFunc("/login/{username}/{password}", loginUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/logout", logoutUserAccountEndpoint)
-	gmuxRouter.HandleFunc("/add", addUserAccountEndpoint).Methods("POST")
-	gmuxRouter.HandleFunc("/delete", deleteUserAccountEndpoint).Methods("DELETE")
-	gmuxRouter.HandleFunc("/edit", editUserAccountEndpoint).Methods("UPDATE")
+	gmuxRouter.HandleFunc("/add/{username}/{password}", addUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/delete/{username}", deleteUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/edit/{username}", editUserAccountEndpoint)
 
 	portStr := fmt.Sprintf(":%d", httpPort)
 
@@ -332,9 +344,9 @@ func generateHashFromPassword(password []byte) (error, string) {
 	return nil, string(hash)
 }
 
-func comparePasswordAgainstHash(hashedPassword string, plaintextPassword []byte) bool {
-	byteHash := []byte(hashedPassword)
-	err := bcrypt.CompareHashAndPassword(byteHash, plaintextPassword)
+func comparePasswordAgainstHash(storedHashedPassword, suppliedPlaintextPassword string) bool {
+
+	err := bcrypt.CompareHashAndPassword([]byte(storedHashedPassword), []byte(suppliedPlaintextPassword))
 	if err != nil {
 		return false
 	}
@@ -373,7 +385,7 @@ func main() {
 	var err error
 	httpPort, err = handleCommandLineParameters()
 
-	simplelogging.Init(logFile, false)
+	simplelogging.Init(logFile, true)
 
 	if *helpFlag {
 		showSyntax()
