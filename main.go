@@ -22,6 +22,7 @@ import (
 	//	"github.com/gorilla/securecookie"
 
 	simplelogging "github.com/colinwilcox1967/golangsimplelogging"
+	"github.com/golang/gddo/httputil/header"
 	"github.com/gorilla/mux"
 )
 
@@ -41,7 +42,7 @@ const (
 )
 
 type UserAccountRecord struct {
-	Id       int    `json:"id"`
+	Id       string `json:"id"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Email    string `json:"email"`
@@ -136,6 +137,13 @@ func editUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 //			break
 //		}
 //	}
+ 
+
+	
+
+    // Header decoder and reject any unknownm fields
+    decoder := json.NewDecoder(r.Body)
+    decoder.DisallowUnknownFields()
 
 	// TO DO Update
 
@@ -366,6 +374,23 @@ func comparePasswordAgainstHash(storedHashedPassword, suppliedPlaintextPassword 
 	}
 
 	return true
+}
+
+// HTTP Header support
+func checkHTTPContentType bool {
+	// Check we have a JSON formatted body
+	if r.Header.Get("Content-Type") != "" {
+        value, _ := header.ParseValueAndParams(r.Header, "Content-Type")
+        if value != "application/json" {
+            msg := "Content-Type header is not application/json"
+            http.Error(w, msg, http.StatusUnsupportedMediaType)
+            return false
+        }
+
+        return true
+    }
+
+    return false
 }
 
 //
