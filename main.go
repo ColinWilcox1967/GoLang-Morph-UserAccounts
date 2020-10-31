@@ -4,8 +4,6 @@
 // (c) 2020 Morph Inc.
 //
 
-//TO DO : Session token handling
-
 package main
 
 import (
@@ -55,8 +53,8 @@ type UserAccountRecord struct {
 type ActionResult struct {
 	Type    int    `json:"type"`
 	Message string `json:"msg"`
-	Value   bool   `json:"value"`
 	Token   string `json:"token"`
+	Code    int    `json:"code"`
 }
 
 // cookie handling
@@ -111,14 +109,14 @@ func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 			msg := fmt.Sprintf("Added user account %s (username:'%s'\n", newAccount.Id, newAccount.Username)
 			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 
-			result.Value = true
+			result.Code = http.StatusCreated
 			result.Message = "New user account created"
 		} else {
-			result.Value = false
+			result.Code = http.StatusNotFound
 			result.Message = "Failed to add new user account"
 		}
 	} else {
-		result.Value = false
+		result.Code = http.StatusBadRequest
 		result.Message = "Account already exists"		
 	}
 
@@ -158,10 +156,10 @@ func editUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	result.Type = ACTION_EDIT_USER_ACCOUNT
 	result.Token = ""
 	if recordsRead == recordsWritten {
-		result.Value = true
+		result.Code = http.StatusOK
 		result.Message = "User account updated."
 	} else {
-		result.Value = false
+		result.Code = http.StatusBadRequest
 		result.Message = "Failed to update user account."
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -196,7 +194,7 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		msg := fmt.Sprintf("Unable to find user account tieh name ('%s')\n", username)
 		simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 
-		result.Value = false
+		result.Code = http.StatusNotFound
 		result.Message = "Record not found"
 
 	} else {
@@ -206,10 +204,10 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		result.Type = ACTION_DELETE_USER_ACCOUNT
 		result.Token = ""
 		if recordsWritten == recordsRead-1 {
-			result.Value = true
+			result.Code = http.StatusOK
 			result.Message = "User account deleted"
 		} else {
-			result.Value = false
+			result.Code = http.StatusBadRequest
 			result.Message = "Failed to delete user account"
 		}
 
@@ -248,31 +246,31 @@ func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		if foundUser {
 			actualPasswordFromFile := userAccounts[index].Password
 			if comparePasswordAgainstHash(actualPasswordFromFile, password) {
-				result = createLoginAttemptResult(true, "Login Successfull")
-
+				result = createLoginAttemptResult(http.StatusOK, "Login Successfull")
+					
 				//			token := GetSessionToken(r)
 				//			setSession(token, r)
 			} else {
-				result = createLoginAttemptResult(false, "Login Failure - Incorrect Credentials")
+				result = createLoginAttemptResult(http.StatusBadRequest, "Login Failure - Incorrect Credentials")
 			}
 		} else {
-			result = createLoginAttemptResult(false, "Login Failure - User Not Found")
+			result = createLoginAttemptResult(http.StatusNotFound, "Login Failure - User Not Found")
 		}
 
 	} else {
-		result = createLoginAttemptResult(false, "Login Failure - No Credentials Supplied")
+		result = createLoginAttemptResult(http.StatusNoContent, "Login Failure - No Credentials Supplied")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
 
-func createLoginAttemptResult(state bool, msg string) ActionResult {
+func createLoginAttemptResult(code int, msg string) ActionResult {
 	var result ActionResult
 
 	result.Type = ACTION_LOGIN
 	result.Message = msg
-	result.Value = state
+	result.Code = code
 	result.Token = ""
 
 	return result
