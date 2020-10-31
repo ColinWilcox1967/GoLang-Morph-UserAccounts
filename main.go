@@ -22,7 +22,7 @@ import (
 	//	"github.com/gorilla/securecookie"
 
 	simplelogging "github.com/colinwilcox1967/golangsimplelogging"
-	"github.com/golang/gddo/httputil/header"
+//	"github.com/golang/gddo/httputil/header"
 	"github.com/gorilla/mux"
 )
 
@@ -74,51 +74,56 @@ var (
 //
 //API Endpoint handler functions
 //
-func addUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
+func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
-	simplelogging.LogMessage("Hit 'addUserAccountEndpoint'", simplelogging.LOG_INFO)
-
+	simplelogging.LogMessage("Hit 'RegisterUserAccountEndpoint'", simplelogging.LOG_INFO)
 
 //	reqBody, _ := ioutil.ReadAll(r.Body)
 	var newAccount UserAccountRecord
+	var result ActionResult
 
 	vars := mux.Vars(r)
 	username := vars["username"]
 	password := vars["password"]
 
+	exists,_ := findUserAccountByUsername(username)
 
-	//json.Unmarshal(reqBody, &newAccount)
+	if !exists {
+		//json.Unmarshal(reqBody, &newAccount)
 
-	fmt.Printf ("Username : %s, Password : %s\n", username, password)
+		fmt.Printf ("Username : %s, Password : %s\n", username, password)
 
 
-	// hash the password before writing
-	_, newAccount.Password = generateHashFromPassword([]byte(password)) // ?? is this needed?
-    newAccount.Username = username
+		// hash the password before writing
+		_, newAccount.Password = generateHashFromPassword([]byte(password)) // ?? is this needed?
+    	newAccount.Username = username
 
-	recordsRead := readUserAccountsFile(accountsFile)
+		recordsRead := readUserAccountsFile(accountsFile)
 
-	userAccounts = append(userAccounts, newAccount)
+		userAccounts = append(userAccounts, newAccount)
 
-	recordsWritten := writeUserAccountsFile(accountsFile)
+		recordsWritten := writeUserAccountsFile(accountsFile)
 
-	var result ActionResult
+	
+		result.Type = ACTION_ADD_USER_ACCOUNT
+		result.Token = ""
+		if recordsWritten == recordsRead+1 {
+			msg := fmt.Sprintf("Added user account %s (username:'%s'\n", newAccount.Id, newAccount.Username)
+			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 
-	result.Type = ACTION_ADD_USER_ACCOUNT
-	result.Token = ""
-	if recordsWritten == recordsRead+1 {
-		msg := fmt.Sprintf("Added user account %s (username:'%s'\n", newAccount.Id, newAccount.Username)
-		simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
-
-		result.Value = true
-		result.Message = "New user account created"
+			result.Value = true
+			result.Message = "New user account created"
+		} else {
+			result.Value = false
+			result.Message = "Failed to add new user account"
+		}
 	} else {
 		result.Value = false
-		result.Message = "Failed to add new user account"
+		result.Message = "Account already exists"		
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(newAccount)
+	json.NewEncoder(w).Encode(result)
 
 }
 
@@ -287,7 +292,7 @@ func handleRequests() {
 
 	gmuxRouter.HandleFunc("/login/{username}/{password}", loginUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/logout", logoutUserAccountEndpoint)
-	gmuxRouter.HandleFunc("/add/{username}/{password}", addUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/register/{username}/{password}", RegisterUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/delete/{username}", deleteUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/edit/{username}", editUserAccountEndpoint)
 
@@ -377,21 +382,21 @@ func comparePasswordAgainstHash(storedHashedPassword, suppliedPlaintextPassword 
 }
 
 // HTTP Header support
-func checkHTTPContentType bool {
+//func checkHTTPContentType () bool {
 	// Check we have a JSON formatted body
-	if r.Header.Get("Content-Type") != "" {
-        value, _ := header.ParseValueAndParams(r.Header, "Content-Type")
-        if value != "application/json" {
-            msg := "Content-Type header is not application/json"
-            http.Error(w, msg, http.StatusUnsupportedMediaType)
-            return false
-        }
+//	if r.Header.Get("Content-Type") != "" {
+  //      value, _ := header.ParseValueAndParams(r.Header, "Content-Type")
+//        if value != "application/json" {
+//            msg := "Content-Type header is not application/json"
+//            http.Error(w, msg, http.StatusUnsupportedMediaType)
+//            return false
+//        }
 
-        return true
-    }
-
-    return false
-}
+  //      return true
+//    }
+//
+ //   return false
+//}
 
 //
 // Session/Token Support
