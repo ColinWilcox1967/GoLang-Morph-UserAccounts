@@ -17,7 +17,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	//	"github.com/gorilla/securecookie"
+	"github.com/nu7hatch/gouuid"
 
 	simplelogging "github.com/colinwilcox1967/golangsimplelogging"
 //	"github.com/golang/gddo/httputil/header"
@@ -246,10 +246,14 @@ func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		if foundUser {
 			actualPasswordFromFile := userAccounts[index].Password
 			if comparePasswordAgainstHash(actualPasswordFromFile, password) {
-				result = createLoginAttemptResult(http.StatusOK, "Login Successfull")
-					
-				//			token := GetSessionToken(r)
-				//			setSession(token, r)
+				
+				err, token := GenerateNewSessionToken ()
+				if err == nil {
+					result = createLoginAttemptResult(http.StatusOK, "Login Successfull")
+					result.Token = token
+				} else {
+					result = createLoginAttemptResult(http.StatusUnauthorized, "Unable To Create Session Token")
+				}
 			} else {
 				result = createLoginAttemptResult(http.StatusBadRequest, "Login Failure - Incorrect Credentials")
 			}
@@ -278,10 +282,6 @@ func createLoginAttemptResult(code int, msg string) ActionResult {
 
 func logoutUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'LogoutUserAccountEndpoint'", simplelogging.LOG_INFO)
-
-
-fmt.Println ("LOGout")
-	//	clearSession(r)
 }
 
 func handleRequests() {
@@ -379,6 +379,18 @@ func comparePasswordAgainstHash(storedHashedPassword, suppliedPlaintextPassword 
 	return true
 }
 
+//
+// Session Token Support
+//
+func GenerateNewSessionToken () (error, string) {
+	uuid, err := uuid.NewV4()
+	if err == nil {
+		return nil, uuid.String ()
+	}
+
+	return err, ""
+}
+
 // HTTP Header support
 //func checkHTTPContentType () bool {
 	// Check we have a JSON formatted body
@@ -396,31 +408,6 @@ func comparePasswordAgainstHash(storedHashedPassword, suppliedPlaintextPassword 
  //   return false
 //}
 
-//
-// Session/Token Support
-//
-//func setSession (userName string, response http.ResponseWriter) {
-//	value := map[string]string{"name": userName,}
-//	if encoded, err := cookieHandler.Encode("session", value); err == nil {
-//		cookie := &http.Cookie{	Name:  "session",Value: encoded,Path:  "/",}
-//		http.SetCookie(response, cookie)
-//	}
-//}
-
-//func clearSession (response http.ResponseWriter) {
-//	cookie := &http.Cookie{Name:   "session",Value:  "",Path:   "/",MaxAge: -1,}
-//	http.SetCookie(response, cookie)
-//}
-
-//func GetSessionToken(request *http.Request) string {
-//	if cookie, err := request.Cookie("session"); err == nil {
-//		cookieValue := make(map[string]string)
-//		if err = cookieHandler.Decode("session", cookie.Value, &cookieValue); err == nil {
-//			token = cookieValue["name"]
-//		}
-//	}
-//	return token
-//}
 
 func main() {
 
