@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/nu7hatch/gouuid"
 	"golang.org/x/crypto/bcrypt"
 	"io/ioutil"
 	"log"
@@ -17,10 +18,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"github.com/nu7hatch/gouuid"
 
 	simplelogging "github.com/colinwilcox1967/golangsimplelogging"
-//	"github.com/golang/gddo/httputil/header"
 	"github.com/gorilla/mux"
 )
 
@@ -50,6 +49,7 @@ type UserAccountRecord struct {
 	Date     string `json:"date"`
 }
 
+// Assorted structures for mapping body content
 type ActionResult struct {
 	Type    int    `json:"type"`
 	Message string `json:"msg"`
@@ -57,8 +57,36 @@ type ActionResult struct {
 	Code    int    `json:"code"`
 }
 
-// cookie handling
-//var cookieHandler = securecookie.New(securecookie.GenerateRandomKey(64),securecookie.GenerateRandomKey(32))
+type ChangeAccountPasswordMessage struct {
+	Username    string `json:"username"`
+	OldPassword string `json:"oldpassword"`
+	NewPassword string `json:"newpassword"`
+}
+
+type LoginAccountMessage struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type DeleteAccountMessage struct {
+	Username string `json:"username"`
+}
+
+type EditAccountMessage struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+type RegisterAccountMessage struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+type LogoutAccountMessage struct {
+	Username string `json:"username"`
+}
 
 var (
 	httpPort     int
@@ -70,13 +98,63 @@ var (
 )
 
 //
-//API Endpoint handler functions
+// API Endpoint handler functions
 //
+
+// ReqBody Format: {"username":xxxx, "oldpassword":xxxx, "newpassword":xxxx}
+
+func ChangeUserAccountPasswordEndpoint(w http.ResponseWriter, r *http.Request) {
+
+	simplelogging.LogMessage("Hit 'ChangeUserAccountPasswordEndpoint'", simplelogging.LOG_INFO)
+
+	var result ActionResult
+
+	reqBody, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	if err == nil {
+		// look for 'username', 'oldpassword' and 'newpassword' tags
+
+		var message ChangeAccountPasswordMessage
+
+		err := json.Unmarshal(reqBody, &message)
+		if err == nil {
+			// check if account exists and password matches before updating
+			exists, index := findUserAccountByUsername(message.Username)
+			if exists {
+				if comparePasswordAgainstHash(userAccounts[index].Password, message.OldPassword) {
+
+					_, hashedNewPassword := generateHashFromPassword([]byte(message.NewPassword))
+
+					userAccounts[index].Password = hashedNewPassword
+					result.Code = http.StatusOK
+					result.Message = "Password changed"
+				} else {
+					result.Code = http.StatusBadRequest
+					result.Message = "Invalid credentials"
+				}
+			} else {
+				result.Code = http.StatusNotFound
+				result.Message = "Account not found"
+			}
+		}
+
+	} else {
+		result.Code = http.StatusBadRequest
+		result.Message = "Bad Request Bodty Contents"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+
+}
+
 func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	simplelogging.LogMessage("Hit 'RegisterUserAccountEndpoint'", simplelogging.LOG_INFO)
 
-//	reqBody, _ := ioutil.ReadAll(r.Body)
+	//	reqBody, _ := ioutil.ReadAll(r.Body)
+
 	var newAccount UserAccountRecord
 	var result ActionResult
 
@@ -84,17 +162,14 @@ func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	username := vars["username"]
 	password := vars["password"]
 
-	exists,_ := findUserAccountByUsername(username)
+	exists, _ := findUserAccountByUsername(username)
 
 	if !exists {
 		//json.Unmarshal(reqBody, &newAccount)
 
-		fmt.Printf ("Username : %s, Password : %s\n", username, password)
-
-
 		// hash the password before writing
 		_, newAccount.Password = generateHashFromPassword([]byte(password)) // ?? is this needed?
-    	newAccount.Username = username
+		newAccount.Username = username
 
 		recordsRead := readUserAccountsFile(accountsFile)
 
@@ -102,7 +177,6 @@ func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 		recordsWritten := writeUserAccountsFile(accountsFile)
 
-	
 		result.Type = ACTION_ADD_USER_ACCOUNT
 		result.Token = ""
 		if recordsWritten == recordsRead+1 {
@@ -117,7 +191,7 @@ func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		result.Code = http.StatusBadRequest
-		result.Message = "Account already exists"		
+		result.Message = "Account already exists"
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -128,42 +202,42 @@ func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 func editUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'editUserAccountEndpoint'", simplelogging.LOG_INFO)
 
-//	vars := mux.Vars(r)
-//	username := vars["username"]
+	vars := mux.Vars(r)
+	username := vars["username"]
 
-//	var accountId int
+	var accountIndex int = -1
 	recordsRead := readUserAccountsFile(accountsFile)
 
-//	for index, account := range userAccounts {
-//		if account.Username == username {
-//			accountId = index
-//			break
-//		}
-//	}
- 
-
-	
-
-    // Header decoder and reject any unknownm fields
-    decoder := json.NewDecoder(r.Body)
-    decoder.DisallowUnknownFields()
-
-	// TO DO Update
-
-	recordsWritten := writeUserAccountsFile(accountsFile)
-
-	var result ActionResult
-	result.Type = ACTION_EDIT_USER_ACCOUNT
-	result.Token = ""
-	if recordsRead == recordsWritten {
-		result.Code = http.StatusOK
-		result.Message = "User account updated."
-	} else {
-		result.Code = http.StatusBadRequest
-		result.Message = "Failed to update user account."
+	for index, account := range userAccounts {
+		if account.Username == username {
+			accountIndex = index
+			break
+		}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+
+	if accountIndex >= 0 {
+
+		// Header decoder and reject any unknownm fields
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+
+		// TO DO Update
+
+		recordsWritten := writeUserAccountsFile(accountsFile)
+
+		var result ActionResult
+		result.Type = ACTION_EDIT_USER_ACCOUNT
+		result.Token = ""
+		if recordsRead == recordsWritten {
+			result.Code = http.StatusOK
+			result.Message = "User account updated."
+		} else {
+			result.Code = http.StatusBadRequest
+			result.Message = "Failed to update user account."
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	}
 }
 
 func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +245,7 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'deleteUserAccountEndpoint'", simplelogging.LOG_INFO)
 
 	var foundRecord bool
-	
+
 	vars := mux.Vars(r)
 	username := vars["username"]
 
@@ -182,7 +256,7 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		if string(account.Username) == username {
 			userAccounts = append(userAccounts[:index], userAccounts[index+1:]...)
 			foundRecord = true
-	
+
 			msg := fmt.Sprintf("Removed user account %s (username:'%s')\n", index, account.Username)
 			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 		}
@@ -195,7 +269,7 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 
 		result.Code = http.StatusNotFound
-		result.Message = "Record not found"
+		result.Message = "Account not found"
 
 	} else {
 
@@ -217,37 +291,30 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-func findUserAccountByUsername(username string) (bool, int) {
-
-	simplelogging.LogMessage("Hit 'findUserAccountByUsername'", simplelogging.LOG_INFO)
-
-	for index, value := range userAccounts {
-		if strings.ToUpper(value.Username) == strings.ToUpper(username) {
-			return true, index
-		}
-	}
-
-	return false, -1 // username not found
-}
-
 func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'LoginUserAccountEndpoint'", simplelogging.LOG_INFO)
 
-	vars := mux.Vars(r)
-	username := vars["username"]
-	password := vars["password"]
+	//	vars := mux.Vars(r)
+	//	username := vars["username"]
+	//	password := vars["password"]
 
+	var message LoginAccountMessage
 	var result ActionResult
 
-	if username != "" && password != "" {
+	reqBody, _ := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	json.Unmarshal(reqBody, &message)
+
+	if message.Username != "" && message.Password != "" {
 		// load into memory and search for matching username
 		_ = readUserAccountsFile(accountsFile)
-		foundUser, index := findUserAccountByUsername(username)
+		foundUser, index := findUserAccountByUsername(message.Username)
 		if foundUser {
 			actualPasswordFromFile := userAccounts[index].Password
-			if comparePasswordAgainstHash(actualPasswordFromFile, password) {
-				
-				err, token := GenerateNewSessionToken ()
+			if comparePasswordAgainstHash(actualPasswordFromFile, message.Password) {
+
+				err, token := GenerateNewSessionToken()
 				if err == nil {
 					result = createLoginAttemptResult(http.StatusOK, "Login Successfull")
 					result.Token = token
@@ -281,7 +348,18 @@ func createLoginAttemptResult(code int, msg string) ActionResult {
 }
 
 func logoutUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
+
 	simplelogging.LogMessage("Hit 'LogoutUserAccountEndpoint'", simplelogging.LOG_INFO)
+
+	var result ActionResult
+
+	result.Type = ACTION_LOGOUT
+	result.Token = ""
+	result.Message = "Success"
+	result.Code = http.StatusOK
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 func handleRequests() {
@@ -293,6 +371,7 @@ func handleRequests() {
 	gmuxRouter.HandleFunc("/register/{username}/{password}", RegisterUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/delete/{username}", deleteUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/edit/{username}", editUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/changepassword", ChangeUserAccountPasswordEndpoint)
 
 	portStr := fmt.Sprintf(":%d", httpPort)
 
@@ -318,6 +397,19 @@ func readUserAccountsFile(accountsFile string) int {
 
 		return -1
 	}
+}
+
+func findUserAccountByUsername(username string) (bool, int) {
+
+	simplelogging.LogMessage("Hit 'findUserAccountByUsername'", simplelogging.LOG_INFO)
+
+	for index, value := range userAccounts {
+		if strings.ToUpper(value.Username) == strings.ToUpper(username) {
+			return true, index
+		}
+	}
+
+	return false, -1 // username not found
 }
 
 func writeUserAccountsFile(filename string) int {
@@ -382,32 +474,14 @@ func comparePasswordAgainstHash(storedHashedPassword, suppliedPlaintextPassword 
 //
 // Session Token Support
 //
-func GenerateNewSessionToken () (error, string) {
+func GenerateNewSessionToken() (error, string) {
 	uuid, err := uuid.NewV4()
 	if err == nil {
-		return nil, uuid.String ()
+		return nil, uuid.String()
 	}
 
 	return err, ""
 }
-
-// HTTP Header support
-//func checkHTTPContentType () bool {
-	// Check we have a JSON formatted body
-//	if r.Header.Get("Content-Type") != "" {
-  //      value, _ := header.ParseValueAndParams(r.Header, "Content-Type")
-//        if value != "application/json" {
-//            msg := "Content-Type header is not application/json"
-//            http.Error(w, msg, http.StatusUnsupportedMediaType)
-//            return false
-//        }
-
-  //      return true
-//    }
-//
- //   return false
-//}
-
 
 func main() {
 
