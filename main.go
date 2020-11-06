@@ -70,6 +70,7 @@ type LoginAccountMessage struct {
 
 type DeleteAccountMessage struct {
 	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type EditAccountMessage struct {
@@ -149,6 +150,8 @@ func ChangeUserAccountPasswordEndpoint(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// Reqbody format: {"username":xxx, "password":xxx, "email":xxx}
+
 func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	simplelogging.LogMessage("Hit 'RegisterUserAccountEndpoint'", simplelogging.LOG_INFO)
@@ -157,41 +160,42 @@ func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	var newAccount UserAccountRecord
 	var result ActionResult
+	var message RegisterAccountMessage
 
-	vars := mux.Vars(r)
-	username := vars["username"]
-	password := vars["password"]
+	reqBody, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
 
-	exists, _ := findUserAccountByUsername(username)
+	if err == nil {
+		err = json.Unmarshal(reqBody, &message)
+		if exists, _ := findUserAccountByUsername(message.Username); !exists {
 
-	if !exists {
-		//json.Unmarshal(reqBody, &newAccount)
+			// hash the password before writing
+			_, newAccount.Password = generateHashFromPassword([]byte(message.Password)) // ?? is this needed?
+			newAccount.Username = message.Username
+			newAccount.Email = message.Email
 
-		// hash the password before writing
-		_, newAccount.Password = generateHashFromPassword([]byte(password)) // ?? is this needed?
-		newAccount.Username = username
+			recordsRead := readUserAccountsFile(accountsFile)
 
-		recordsRead := readUserAccountsFile(accountsFile)
+			userAccounts = append(userAccounts, newAccount)
 
-		userAccounts = append(userAccounts, newAccount)
+			recordsWritten := writeUserAccountsFile(accountsFile)
 
-		recordsWritten := writeUserAccountsFile(accountsFile)
+			result.Type = ACTION_ADD_USER_ACCOUNT
+			result.Token = ""
+			if recordsWritten == recordsRead+1 {
+				msg := fmt.Sprintf("Added user account %s (message.Username:'%s'\n", newAccount.Id, newAccount.Username)
+				simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
 
-		result.Type = ACTION_ADD_USER_ACCOUNT
-		result.Token = ""
-		if recordsWritten == recordsRead+1 {
-			msg := fmt.Sprintf("Added user account %s (username:'%s'\n", newAccount.Id, newAccount.Username)
-			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
-
-			result.Code = http.StatusCreated
-			result.Message = "New user account created"
+				result.Code = http.StatusCreated
+				result.Message = "New user account created"
+			} else {
+				result.Code = http.StatusNotFound
+				result.Message = "Failed to add new user account"
+			}
 		} else {
-			result.Code = http.StatusNotFound
-			result.Message = "Failed to add new user account"
+			result.Code = http.StatusBadRequest
+			result.Message = "Account already exists"
 		}
-	} else {
-		result.Code = http.StatusBadRequest
-		result.Message = "Account already exists"
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -199,46 +203,57 @@ func RegisterUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// Reqbody format: {"username":xxx, "password":xxxx, "email":xxxx}
+
 func editUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'editUserAccountEndpoint'", simplelogging.LOG_INFO)
 
-	vars := mux.Vars(r)
-	username := vars["username"]
+	var message EditAccountMessage
+	var result ActionResult
 
-	var accountIndex int = -1
-	recordsRead := readUserAccountsFile(accountsFile)
+	reqBody, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
 
-	for index, account := range userAccounts {
-		if account.Username == username {
-			accountIndex = index
-			break
+	if err == nil {
+		json.Unmarshal(reqBody, &message)
+
+		var accountIndex int = -1
+		recordsRead := readUserAccountsFile(accountsFile)
+
+		for index, account := range userAccounts {
+			if account.Username == message.Username {
+				accountIndex = index
+				break
+			}
 		}
+
+		//record exists and passwords match
+		if accountIndex >= 0 && comparePasswordAgainstHash(userAccounts[accountIndex].Password, message.Password) {
+
+			userAccounts[accountIndex].Email = message.Email
+
+			recordsWritten := writeUserAccountsFile(accountsFile)
+
+			result.Type = ACTION_EDIT_USER_ACCOUNT
+			result.Token = ""
+			if recordsRead == recordsWritten {
+				result.Code = http.StatusOK
+				result.Message = "User account updated."
+			} else {
+				result.Code = http.StatusBadRequest
+				result.Message = "Failed to update user account."
+			}
+		}
+	} else {
+		result.Code = http.StatusNoContent
+		result.Message = err.Error()
 	}
 
-	if accountIndex >= 0 {
-
-		// Header decoder and reject any unknownm fields
-		decoder := json.NewDecoder(r.Body)
-		decoder.DisallowUnknownFields()
-
-		// TO DO Update
-
-		recordsWritten := writeUserAccountsFile(accountsFile)
-
-		var result ActionResult
-		result.Type = ACTION_EDIT_USER_ACCOUNT
-		result.Token = ""
-		if recordsRead == recordsWritten {
-			result.Code = http.StatusOK
-			result.Message = "User account updated."
-		} else {
-			result.Code = http.StatusBadRequest
-			result.Message = "Failed to update user account."
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
-	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
+
+// ReqBody: {"username":xxx, "password":xxx}
 
 func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
@@ -246,57 +261,62 @@ func deleteUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	var foundRecord bool
 
-	vars := mux.Vars(r)
-	username := vars["username"]
-
-	recordsRead := readUserAccountsFile(accountsFile)
-
-	for index, account := range userAccounts {
-
-		if string(account.Username) == username {
-			userAccounts = append(userAccounts[:index], userAccounts[index+1:]...)
-			foundRecord = true
-
-			msg := fmt.Sprintf("Removed user account %s (username:'%s')\n", index, account.Username)
-			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
-		}
-	}
-
+	var message DeleteAccountMessage
 	var result ActionResult
 
-	if !foundRecord {
-		msg := fmt.Sprintf("Unable to find user account tieh name ('%s')\n", username)
-		simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
+	reqBody, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
 
-		result.Code = http.StatusNotFound
-		result.Message = "Account not found"
+	if err == nil {
+		json.Unmarshal(reqBody, &message)
 
-	} else {
+		recordsRead := readUserAccountsFile(accountsFile)
 
-		recordsWritten := writeUserAccountsFile(accountsFile)
+		for index, account := range userAccounts {
 
-		result.Type = ACTION_DELETE_USER_ACCOUNT
-		result.Token = ""
-		if recordsWritten == recordsRead-1 {
-			result.Code = http.StatusOK
-			result.Message = "User account deleted"
-		} else {
-			result.Code = http.StatusBadRequest
-			result.Message = "Failed to delete user account"
+			if string(account.Username) == message.Username && comparePasswordAgainstHash(account.Password, message.Password) {
+				userAccounts = append(userAccounts[:index], userAccounts[index+1:]...)
+				foundRecord = true
+
+				msg := fmt.Sprintf("Removed user account %s (username:'%s')\n", index, account.Username)
+				simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
+			}
 		}
 
+		if !foundRecord {
+			msg := fmt.Sprintf("Unable to find user account tieh name ('%s')\n", message.Username)
+			simplelogging.LogMessage(msg, simplelogging.LOG_INFO)
+
+			result.Code = http.StatusNotFound
+			result.Message = "Account not found"
+
+		} else {
+
+			recordsWritten := writeUserAccountsFile(accountsFile)
+
+			result.Type = ACTION_DELETE_USER_ACCOUNT
+			result.Token = ""
+			if recordsWritten == recordsRead-1 {
+				result.Code = http.StatusOK
+				result.Message = "User account deleted"
+			} else {
+				result.Code = http.StatusBadRequest
+				result.Message = "Failed to delete user account"
+			}
+		}
+	} else {
+		result.Message = "Bad Content"
+		result.Code = http.StatusNoContent
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
 
+// ReqBody Format : {"username":xxxx, "password":xxxx}
+
 func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 	simplelogging.LogMessage("Hit 'LoginUserAccountEndpoint'", simplelogging.LOG_INFO)
-
-	//	vars := mux.Vars(r)
-	//	username := vars["username"]
-	//	password := vars["password"]
 
 	var message LoginAccountMessage
 	var result ActionResult
