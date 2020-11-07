@@ -386,11 +386,11 @@ func handleRequests() {
 
 	gmuxRouter := mux.NewRouter().StrictSlash(true)
 
-	gmuxRouter.HandleFunc("/login/{username}/{password}", loginUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/login", loginUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/logout", logoutUserAccountEndpoint)
-	gmuxRouter.HandleFunc("/register/{username}/{password}", RegisterUserAccountEndpoint)
-	gmuxRouter.HandleFunc("/delete/{username}", deleteUserAccountEndpoint)
-	gmuxRouter.HandleFunc("/edit/{username}", editUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/register", RegisterUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/delete", deleteUserAccountEndpoint)
+	gmuxRouter.HandleFunc("/edit", editUserAccountEndpoint)
 	gmuxRouter.HandleFunc("/changepassword", ChangeUserAccountPasswordEndpoint)
 
 	portStr := fmt.Sprintf(":%d", httpPort)
