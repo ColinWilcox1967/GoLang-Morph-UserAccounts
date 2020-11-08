@@ -43,6 +43,7 @@ type UserAccountRecord struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Email    string `json:"email"`
+	Token    string `json:"token"`
 	Active   bool   `json:"active"`
 	Deleted  bool   `json:"deleted"`
 	Blocked  bool   `json:"blocked"`
@@ -86,7 +87,7 @@ type RegisterAccountMessage struct {
 }
 
 type LogoutAccountMessage struct {
-	Username string `json:"username"`
+	Token string `json:"token"`
 }
 
 var (
@@ -367,16 +368,34 @@ func createLoginAttemptResult(code int, msg string) ActionResult {
 	return result
 }
 
+// ReqBody Format : {"token": xxxx}
+
 func logoutUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 
 	simplelogging.LogMessage("Hit 'LogoutUserAccountEndpoint'", simplelogging.LOG_INFO)
 
+	var message LogoutAccountMessage
 	var result ActionResult
 
+	reqBody, _ := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	json.Unmarshal(reqBody, &message)
+
 	result.Type = ACTION_LOGOUT
-	result.Token = ""
-	result.Message = "Success"
-	result.Code = http.StatusOK
+
+	if foundSession, index := findActiveSession(message.Token); foundSession {
+		result.Token = userAccounts[index].Token
+
+		userAccounts[index].Token = "" // clear the session token
+
+		result.Message = "Success"
+		result.Code = http.StatusOK
+	} else {
+		result.Token = ""
+		result.Message = "Session not found"
+		result.Code = http.StatusNotFound
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
@@ -417,6 +436,17 @@ func readUserAccountsFile(accountsFile string) int {
 
 		return -1
 	}
+}
+
+func findActiveSession(token string) (bool, int) {
+
+	for index, account := range userAccounts {
+		if account.Token == token {
+			return true, index
+		}
+	}
+
+	return false, -1
 }
 
 func findUserAccountByUsername(username string) (bool, int) {
