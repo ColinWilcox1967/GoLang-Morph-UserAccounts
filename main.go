@@ -332,18 +332,27 @@ func loginUserAccountEndpoint(w http.ResponseWriter, r *http.Request) {
 		_ = readUserAccountsFile(accountsFile)
 		foundUser, index := findUserAccountByUsername(message.Username)
 		if foundUser {
-			actualPasswordFromFile := userAccounts[index].Password
-			if comparePasswordAgainstHash(actualPasswordFromFile, message.Password) {
 
-				err, token := GenerateNewSessionToken()
-				if err == nil {
-					result = createLoginAttemptResult(http.StatusOK, "Login Successfull")
-					result.Token = token
+			// check the user account isnt already bound to an active session
+			if len(userAccounts[index].Token) == 0 {
+
+				actualPasswordFromFile := userAccounts[index].Password
+				if comparePasswordAgainstHash(actualPasswordFromFile, message.Password) {
+
+					err, token := GenerateNewSessionToken()
+					if err == nil {
+						result = createLoginAttemptResult(http.StatusOK, "Login Successfull")
+						result.Token = token
+						userAccounts[index].Token = token // store the token in the account record
+
+					} else {
+						result = createLoginAttemptResult(http.StatusUnauthorized, "Unable To Create Session Token")
+					}
 				} else {
-					result = createLoginAttemptResult(http.StatusUnauthorized, "Unable To Create Session Token")
+					result = createLoginAttemptResult(http.StatusBadRequest, "Login Failure - Incorrect Credentials")
 				}
 			} else {
-				result = createLoginAttemptResult(http.StatusBadRequest, "Login Failure - Incorrect Credentials")
+				result = createLoginAttemptResult(http.StatusConflict, "Account already logged in.")
 			}
 		} else {
 			result = createLoginAttemptResult(http.StatusNotFound, "Login Failure - User Not Found")
